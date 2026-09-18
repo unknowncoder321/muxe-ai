@@ -35,7 +35,7 @@ muxe
 3. Downloads the MUXE source
 4. Creates a private virtualenv and installs:
    `pyyaml`, `rich`, `psutil`, `llama-cpp-python`
-5. Detects your free RAM and downloads the biggest model you can actually run
+5. Detects your RAM and **asks which model you want**, recommending one
 6. Creates a portable `muxe` launcher and adds it to your PATH
 
 Re-running the installer is safe. It upgrades in place and **keeps your models**,
@@ -45,13 +45,18 @@ so it won't re-download gigabytes.
 
 ## Which model do I get?
 
-Picked automatically from your free RAM:
+**You choose.** The installer shows a menu and marks one as recommended, worked
+out from your **total** RAM — a fixed number, unlike free RAM, which swings
+wildly depending on which apps happen to be open:
 
-| Free RAM | Model | Size |
+| Total RAM | Recommended | Size |
 | --- | --- | --- |
-| 3.4 GB + | Qwen3-4B-Instruct | 2.33 GB |
-| 1.9 GB + | Qwen2.5-Coder-1.5B | 1.04 GB |
+| 5.5 GB + | Qwen3-4B-Instruct | 2.33 GB |
+| 2.5 GB + | Qwen2.5-Coder-1.5B | 1.04 GB |
 | below | Qwen2.5-0.5B | 0.46 GB |
+
+Press **Enter** to accept the recommendation, or type `1`, `2`, or `3` to pick
+a different one.
 
 Bigger = smarter but slower. The 4B is the sweet spot on a 6 GB machine.
 

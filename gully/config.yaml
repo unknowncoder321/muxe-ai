@@ -1,8 +1,8 @@
 app_name: MUXE
 host: 127.0.0.1
 port: 8766
-# BRAIN UPGRADE: Qwen3-4B-Instruct-2507 Q4_K_M (2.33GB) — smartest that fits this RAM
-# (1.5B/0.5B left in gully/models/ if you want speed back)
+# model: chosen by the installer (Qwen3 4B / Qwen2.5-Coder 1.5B / Qwen2.5 0.5B)
+# re-run the installer to switch models
 engine: llama_cpp
 model_id: gully/models/Qwen3-4B-Instruct-2507-Q4_K_M.gguf
 model_file: gully/models/Qwen3-4B-Instruct-2507-Q4_K_M.gguf

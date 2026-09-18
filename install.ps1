@@ -10,7 +10,7 @@
     2. find or install Python 3
     3. download the MUXE source code
     4. create a private virtualenv and install the 4 dependencies
-    5. detect your RAM and download the biggest model you can actually run
+    5. detect your RAM and ask which model you want (it recommends one)
     6. create a portable `muxe` launcher and put it on your PATH
 
   Re-running it is safe: it upgrades in place and keeps your models.
@@ -32,16 +32,23 @@ $VENV    = Join-Path $INSTALL '.venv'
 $PYEXE   = Join-Path $VENV 'Scripts\python.exe'
 $PYINDEX = 'https://abetlen.github.io/llama-cpp-python/whl/cpu'
 
-# model tiers, biggest first: need = free RAM in GB required
+# Model choices, smartest first. `size` and `note` are only for the menu;
+# the recommendation is worked out from TOTAL RAM in step 5 below.
 $MODELS = @(
-  @{ need = 3.4; file = 'Qwen3-4B-Instruct-2507-Q4_K_M.gguf'
-     label = 'Qwen3 4B   - smartest'
+  @{ file  = 'Qwen3-4B-Instruct-2507-Q4_K_M.gguf'
+     label = 'Qwen3 4B'
+     size  = '2.3 GB'
+     note  = 'smartest, slower'
      url   = 'https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF/resolve/main/Qwen3-4B-Instruct-2507-Q4_K_M.gguf' }
-  @{ need = 1.9; file = 'qwen2.5-coder-1.5b-instruct-q4_k_m.gguf'
-     label = 'Qwen2.5-Coder 1.5B - balanced'
+  @{ file  = 'qwen2.5-coder-1.5b-instruct-q4_k_m.gguf'
+     label = 'Qwen2.5-Coder 1.5B'
+     size  = '1.0 GB'
+     note  = 'balanced'
      url   = 'https://huggingface.co/Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF/resolve/main/qwen2.5-coder-1.5b-instruct-q4_k_m.gguf' }
-  @{ need = 0.0; file = 'qwen2.5-0.5b-instruct-q4_k_m.gguf'
-     label = 'Qwen2.5 0.5B - fastest'
+  @{ file  = 'qwen2.5-0.5b-instruct-q4_k_m.gguf'
+     label = 'Qwen2.5 0.5B'
+     size  = '0.5 GB'
+     note  = 'fastest, simplest'
      url   = 'https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf' }
 )
 
@@ -148,10 +155,38 @@ Ok "dependencies ready."
 
 # ---------------------------------------------------------------- 5. model
 Head "Model"
-$freeGB = [math]::Round((Get-CimInstance Win32_OperatingSystem).FreePhysicalMemory / 1MB, 1)
-Say "free RAM: $freeGB GB"
-$pick = $MODELS | Where-Object { $freeGB -ge $_.need } | Select-Object -First 1
-Say "selected: $($pick.label)"
+# Recommend from TOTAL RAM, never free RAM. Total is a fixed property of the machine,
+# so the same PC always gets the same suggestion no matter what apps happen to be open.
+$totalGB = [math]::Round((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory / 1GB, 1)
+Say "total RAM: $totalGB GB"
+
+$rec = 3
+if     ($totalGB -ge 5.5) { $rec = 1 }
+elseif ($totalGB -ge 2.5) { $rec = 2 }
+
+Write-Host ""
+Say "Which model do you want?"
+Write-Host ""
+for ($i = 0; $i -lt $MODELS.Count; $i++) {
+  $n    = $i + 1
+  $mark = ''
+  if ($n -eq $rec) { $mark = '   <-- recommended for your RAM' }
+  Write-Host ("    {0})  {1,-18} {2,7}   {3}{4}" -f $n, $MODELS[$i].label, $MODELS[$i].size, $MODELS[$i].note, $mark)
+}
+Write-Host ""
+
+# Enter (or anything invalid) falls back to the recommendation, so this can never hang.
+$ans = ''
+try { $ans = Read-Host -Prompt "  Pick 1-$($MODELS.Count)  (press Enter for $rec)" } catch { }
+if ([string]::IsNullOrWhiteSpace($ans)) { $ans = "$rec" }
+
+$sel = 0
+if (-not [int]::TryParse($ans, [ref]$sel) -or $sel -lt 1 -or $sel -gt $MODELS.Count) {
+  Warn "not a valid choice - going with the recommended one"
+  $sel = $rec
+}
+$pick = $MODELS[$sel - 1]
+Ok "selected: $($pick.label)  ($($pick.size), $($pick.note)) "
 
 $mdir  = Join-Path $INSTALL 'models'
 New-Item -ItemType Directory -Force -Path $mdir | Out-Null
@@ -212,6 +247,9 @@ if (Test-Path $cfg) {
   foreach ($k in @('model_id','model_file')) {
     $text = [regex]::Replace($text, ('(?m)^' + $k + ':.*'), ($k + ': ' + $rel))
   }
+  # keep the marker comment honest about which model this install really uses
+  $text = [regex]::Replace($text, '(?m)^# model:.*',
+            ('# model: ' + $pick.label + ' (' + $pick.size + ', ' + $pick.note + ')'))
   [IO.File]::WriteAllText($cfg, $text, (New-Object Text.UTF8Encoding($false)))
   Ok "config points at $($pick.file)"
 }
