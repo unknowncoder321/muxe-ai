@@ -72,6 +72,13 @@ it would page off the SSD and crawl. Don't bother.
 - 4 GB RAM minimum (6 GB+ recommended)
 - Internet connection for the first install only
 
+**You don't need to install anything first.** If Python 3 is missing, the
+installer installs it for you (via `winget`, falling back to the official
+python.org installer). It then creates its own private virtualenv and installs
+every dependency into it using **prebuilt wheels**, so no compiler, CMake or
+Visual Studio Build Tools are ever needed. Nothing is installed globally, and
+any Python you already have is left alone.
+
 After that it runs fully offline.
 
 ---

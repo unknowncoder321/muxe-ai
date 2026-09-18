@@ -7,9 +7,10 @@
 
   It will:
     1. ask for the password   (checked against a SHA-256 hash, never stored)
-    2. find or install Python 3
+    2. find Python 3 - or install it for you (winget, falling back to python.org)
     3. download the MUXE source code
-    4. create a private virtualenv and install the 4 dependencies
+    4. create a private virtualenv and install the dependencies
+       (prebuilt CPU wheels - no compiler or build tools needed)
     5. detect your RAM and ask which model you want (it recommends one)
     6. create a portable `muxe` launcher and put it on your PATH
 
@@ -85,32 +86,92 @@ New-Item -ItemType Directory -Force -Path $INSTALL | Out-Null
 
 # ---------------------------------------------------------------- 2. python
 Head "Python"
-$PY = $null
-foreach ($cand in @(@('py','-3'), @('python',''))) {
-  $exe = $cand[0]; $pre = $cand[1]
+
+# winget and the python.org installer both write Python into the REGISTRY path,
+# but this process keeps the PATH it was started with. So we pull the registry
+# entries in - otherwise we would never see the Python we just installed and
+# the install would die right here.
+# This only ever ADDS, so nothing the parent process put on PATH is lost.
+function Sync-Path {
+  foreach ($scope in @('Machine', 'User')) {
+    $reg = [Environment]::GetEnvironmentVariable('Path', $scope)
+    if (-not $reg) { continue }
+    foreach ($p in @($reg -split ';' | Where-Object { $_ })) {
+      if (($env:Path -split ';') -notcontains $p) { $env:Path = "$env:Path;$p" }
+    }
+  }
+}
+
+# Finds a usable Python 3. PATH is checked first, then the folders Python
+# actually installs into - both the classic Programs\Python\Python3xx layout
+# and the newer AppData\Local\Python\pythoncore-* layout used by the py manager.
+function Find-Python {
+  $cands = @(@('py', '-3'), @('python', ''))
+  foreach ($pat in @("$env:LOCALAPPDATA\Python\pythoncore-3*",
+                     "$env:LOCALAPPDATA\Programs\Python\Python3*",
+                     "$env:ProgramFiles\Python3*",
+                     "${env:ProgramFiles(x86)}\Python3*",
+                     'C:\Python3*')) {
+    $dirs = @(Get-ChildItem -Path $pat -Directory -ErrorAction SilentlyContinue | Where-Object { $_ })
+    foreach ($d in $dirs) {
+      $exe = Join-Path $d.FullName 'python.exe'
+      if (Test-Path $exe) { $cands += , @($exe, '') }
+    }
+  }
+  foreach ($c in $cands) {
+    try {
+      $v = & $c[0] $c[1] -c "import sys;print(sys.version_info[0])" 2>$null
+      if ("$v".Trim() -eq '3') { return @($c[0], $c[1]) }
+    } catch { }
+  }
+  return $null
+}
+
+$PY = Find-Python
+
+if (-not $PY -and (Get-Command winget -ErrorAction SilentlyContinue)) {
+  Say "Python 3 not found - installing it for you ..."
   try {
-    $v = & $exe $pre -c "import sys;print(sys.version_info[0])" 2>$null
-    if ("$v".Trim() -eq '3') { $PY = @($exe, $pre); break }
+    # --scope user: no admin prompt. --silent: no clicking through a wizard.
+    winget install -e --id Python.Python.3.12 --scope user --silent `
+      --accept-source-agreements --accept-package-agreements | Out-Null
   } catch { }
+  Sync-Path
+  $PY = Find-Python
 }
 
 if (-not $PY) {
-  Warn "Python 3 not found. Trying winget..."
+  # No winget (older Windows) - fall back to the official installer.
+  Say "downloading Python from python.org ..."
+  $want  = '3.12.8'
+  $arch  = if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') { 'arm64' } else { 'amd64' }
+  $setup = Join-Path $env:TEMP "muxe-python-$want-$arch.exe"
   try {
-    winget install -e --id Python.Python.3.12 --accept-source-agreements --accept-package-agreements | Out-Null
-  } catch { }
-  foreach ($cand in @(@('py','-3'), @('python',''))) {
-    try {
-      $v = & $cand[0] $cand[1] -c "import sys;print(sys.version_info[0])" 2>$null
-      if ("$v".Trim() -eq '3') { $PY = @($cand[0], $cand[1]); break }
-    } catch { }
+    Invoke-WebRequest -UseBasicParsing -OutFile $setup `
+      -Uri "https://www.python.org/ftp/python/$want/python-$want-$arch.exe"
+    # per-user, quiet, and added to PATH so Find-Python can see it afterwards
+    Start-Process -FilePath $setup -Wait -ArgumentList `
+      '/quiet', 'InstallAllUsers=0', 'PrependPath=1', 'Include_pip=1', 'Include_launcher=1'
+  } catch {
+    Warn "Python install failed: $($_.Exception.Message)"
   }
+  Remove-Item $setup -Force -ErrorAction SilentlyContinue
+  Sync-Path
+  $PY = Find-Python
 }
+
 if (-not $PY) {
-  Die "Python 3 is required. Install it from https://python.org and re-run."
+  Die "Could not set up Python 3 automatically. Install it from https://python.org, then run this installer again."
 }
-$pyver = & $PY[0] $PY[1] --version 2>&1
-Ok "$pyver found."
+$pyv = & $PY[0] $PY[1] --version 2>&1
+Ok "$pyv"
+
+# The venv step below needs pip inside that Python, or it builds a dead env.
+$pipOk = & $PY[0] $PY[1] -m pip --version 2>$null
+if ($LASTEXITCODE -ne 0 -or -not $pipOk) {
+  Warn "pip missing - repairing ..."
+  & $PY[0] $PY[1] -m ensurepip --upgrade 2>$null | Out-Null
+}
 
 # ---------------------------------------------------------------- 3. source
 Head "Source code"
@@ -138,14 +199,19 @@ if (-not (Test-Path $PYEXE)) {
   Say "creating virtualenv ..."
   & $PY[0] $PY[1] -m venv $VENV
 }
-if (-not (Test-Path $PYEXE)) { Die "Could not create the virtualenv." }
+if (-not (Test-Path $PYEXE)) {
+  Die "Could not create the virtualenv. Install Python 3 from https://python.org, then re-run."
+}
 
-& $PYEXE -m pip install --upgrade pip --quiet --disable-pip-version-check
+& $PYEXE -m pip install --upgrade pip setuptools wheel --quiet --disable-pip-version-check
 Say "installing pyyaml, rich, psutil ..."
 & $PYEXE -m pip install --quiet --disable-pip-version-check pyyaml rich psutil
 if ($LASTEXITCODE -ne 0) { Die "Failed installing base dependencies." }
 
-Say "installing llama-cpp-python (prebuilt CPU wheel) ..."
+# llama-cpp-python is the AI backend. On Windows it ships as a prebuilt
+# `py3-none-win_amd64` wheel that works on any Python 3, so this never needs a
+# compiler - but only if we take the wheel, never the source tarball.
+Say "installing llama-cpp-python (prebuilt CPU wheel, no compiler needed) ..."
 & $PYEXE -m pip install --quiet --disable-pip-version-check `
     --extra-index-url $PYINDEX --only-binary=:all: llama-cpp-python
 if ($LASTEXITCODE -ne 0) {
@@ -287,6 +353,8 @@ if ($userPath -notlike "*$INSTALL*") {
 Head "Verify"
 & $PYEXE -c "import llama_cpp, yaml, rich, psutil; print('  all imports ok')"
 if ($LASTEXITCODE -ne 0) { Warn "import check failed - MUXE may not start." }
+$vers = & $PYEXE -c "import importlib; print(', '.join(m + ' ' + getattr(importlib.import_module(m), '__version__', '?') for m in ('yaml','rich','psutil','llama_cpp')))"
+Ok "installed: $vers"
 
 Write-Host ""
 Write-Host "  Done." -ForegroundColor Green
