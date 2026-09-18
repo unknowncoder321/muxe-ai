@@ -32,24 +32,26 @@ $VENV    = Join-Path $INSTALL '.venv'
 $PYEXE   = Join-Path $VENV 'Scripts\python.exe'
 $PYINDEX = 'https://abetlen.github.io/llama-cpp-python/whl/cpu'
 
-# Model choices, smartest first. `size` and `note` are only for the menu;
-# the recommendation is worked out from TOTAL RAM in step 5 below.
+# Model choices, smallest first: MUXE 1 -> MUXE 1.5 Flash -> MUXE 2.5 Pro.
+# `label` is the MUXE brand name shown in the menu. The underlying files and
+# download URLs are unchanged. `size` and `note` are only for the menu; the
+# recommendation is worked out from TOTAL RAM in step 5 below.
 $MODELS = @(
-  @{ file  = 'Qwen3-4B-Instruct-2507-Q4_K_M.gguf'
-     label = 'Qwen3 4B'
-     size  = '2.3 GB'
-     note  = 'smartest, slower'
-     url   = 'https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF/resolve/main/Qwen3-4B-Instruct-2507-Q4_K_M.gguf' }
-  @{ file  = 'qwen2.5-coder-1.5b-instruct-q4_k_m.gguf'
-     label = 'Qwen2.5-Coder 1.5B'
-     size  = '1.0 GB'
-     note  = 'balanced'
-     url   = 'https://huggingface.co/Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF/resolve/main/qwen2.5-coder-1.5b-instruct-q4_k_m.gguf' }
   @{ file  = 'qwen2.5-0.5b-instruct-q4_k_m.gguf'
-     label = 'Qwen2.5 0.5B'
+     label = 'MUXE 1'
      size  = '0.5 GB'
      note  = 'fastest, simplest'
      url   = 'https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf' }
+  @{ file  = 'qwen2.5-coder-1.5b-instruct-q4_k_m.gguf'
+     label = 'MUXE 1.5 Flash'
+     size  = '1.0 GB'
+     note  = 'balanced'
+     url   = 'https://huggingface.co/Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF/resolve/main/qwen2.5-coder-1.5b-instruct-q4_k_m.gguf' }
+  @{ file  = 'Qwen3-4B-Instruct-2507-Q4_K_M.gguf'
+     label = 'MUXE 2.5 Pro'
+     size  = '2.3 GB'
+     note  = 'smartest, slower'
+     url   = 'https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF/resolve/main/Qwen3-4B-Instruct-2507-Q4_K_M.gguf' }
 )
 
 function Say  ($m) { Write-Host "  $m" }
@@ -160,8 +162,8 @@ Head "Model"
 $totalGB = [math]::Round((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory / 1GB, 1)
 Say "total RAM: $totalGB GB"
 
-$rec = 3
-if     ($totalGB -ge 5.5) { $rec = 1 }
+$rec = 1
+if     ($totalGB -ge 5.5) { $rec = 3 }
 elseif ($totalGB -ge 2.5) { $rec = 2 }
 
 Write-Host ""

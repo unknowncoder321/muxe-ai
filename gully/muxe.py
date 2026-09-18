@@ -264,6 +264,12 @@ def _model_name(eng, cfg) -> str:
         return "MUXE Base"
     if "tinyllama" in low:
         return "TinyLlama 1.1B"
+    # MUXE brand names for the models the installer ships
+    for frag, name in (("qwen3-4b-instruct-2507", "MUXE 2.5 Pro"),
+                       ("qwen2.5-coder-1.5b", "MUXE 1.5 Flash"),
+                       ("qwen2.5-0.5b", "MUXE 1")):
+        if frag in low:
+            return name
     return _pretty_model(mid, 18) or "MUXE Base"
 
 

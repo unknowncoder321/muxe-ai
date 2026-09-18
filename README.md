@@ -51,14 +51,14 @@ wildly depending on which apps happen to be open:
 
 | Total RAM | Recommended | Size |
 | --- | --- | --- |
-| 5.5 GB + | Qwen3-4B-Instruct | 2.33 GB |
-| 2.5 GB + | Qwen2.5-Coder-1.5B | 1.04 GB |
-| below | Qwen2.5-0.5B | 0.46 GB |
+| 5.5 GB + | MUXE 2.5 Pro | 2.33 GB |
+| 2.5 GB + | MUXE 1.5 Flash | 1.04 GB |
+| below | MUXE 1 | 0.46 GB |
 
 Press **Enter** to accept the recommendation, or type `1`, `2`, or `3` to pick
 a different one.
 
-Bigger = smarter but slower. The 4B is the sweet spot on a 6 GB machine.
+Bigger = smarter but slower. **MUXE 2.5 Pro** is the sweet spot on a 6 GB machine.
 
 A 7B model needs 3.4–4.5 GB and will **not** fit in 6 GB of total RAM —
 it would page off the SSD and crawl. Don't bother.
