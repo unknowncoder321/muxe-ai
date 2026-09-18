@@ -1,0 +1,19 @@
+# big files that are downloaded at install time, never committed
+models/
+*.gguf
+
+# generated at runtime
+gully/data/
+*.tmp
+
+# python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# editor / os
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini

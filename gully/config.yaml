@@ -1,0 +1,22 @@
+app_name: MUXE
+host: 127.0.0.1
+port: 8766
+# BRAIN UPGRADE: Qwen3-4B-Instruct-2507 Q4_K_M (2.33GB) — smartest that fits this RAM
+# (1.5B/0.5B left in gully/models/ if you want speed back)
+engine: llama_cpp
+model_id: gully/models/Qwen3-4B-Instruct-2507-Q4_K_M.gguf
+model_file: gully/models/Qwen3-4B-Instruct-2507-Q4_K_M.gguf
+model_type: qwen3
+persona_file: gully/persona.txt
+max_history_turns: 6
+offline: false
+gen:
+  # 384 so real code answers finish instead of getting cut off mid-line.
+  # Lower it (e.g. 128) if you want faster replies and shorter answers.
+  max_new_tokens: 384
+  temperature: 0.7
+  top_p: 0.9
+  top_k: 40
+  repeat_penalty: 1.1
+  n_ctx: 2048
+  threads: 4

@@ -1,0 +1,23 @@
+# GULLY — minimal requirements
+# Core (no ML): everything works with just Python stdlib + pyyaml (optional)
+# Dummy engine needs ZERO extra deps — proves the app without using RAM.
+
+# Optional: YAML config file support (recommended)
+pyyaml>=6.0
+
+# ── OPTIONAL — only if you want a real tiny local model ──
+# Pick ONE of these backends. Stay tiny! (TinyLlama 1.1B / Qwen2-0.5B, Q4 quant)
+# Keep n_ctx=1024 and max_new_tokens=256 on 6 GB RAM.
+
+# Option A: Hugging Face transformers (CPU torch)
+# pip install transformers torch --index-url https://download.pytorch.org/whl/cpu
+# transformers>=4.36
+# torch --cpu
+
+# Option B: llama.cpp GGUF (lowest RAM, recommended for weak hardware)
+# pip install llama-cpp-python
+# llama-cpp-python>=0.2.0
+
+# Option C: ctransformers GGUF (alternative)
+# pip install ctransformers
+# ctransformers>=0.2.27
