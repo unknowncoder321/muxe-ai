@@ -18,6 +18,7 @@ import re
 import sys
 import time
 import os
+import pathlib
 import threading
 from dataclasses import asdict
 from typing import Optional
@@ -48,7 +49,7 @@ except Exception:
     Live = None  # type: ignore
 
 try:
-    from .config import load_config, load_persona
+    from .config import load_config, load_persona, save_config, MODELS_DIR
     from .engine import create_engine, history_to_text, history_to_text_smart, estimate_tokens, thinking_trace
     from .websearch import search as web_search, format_results as format_web, is_online as web_is_online
     from .control import try_action as pc_try_action, list_actions as pc_list_actions
@@ -61,7 +62,7 @@ try:
 except ImportError:
     import pathlib as _pl, sys as _sys
     _sys.path.insert(0, str(_pl.Path(__file__).resolve().parent.parent))
-    from gully.config import load_config, load_persona  # type: ignore
+    from gully.config import load_config, load_persona, save_config, MODELS_DIR  # type: ignore
     from gully.engine import create_engine, history_to_text, history_to_text_smart, estimate_tokens, thinking_trace  # type: ignore
     from gully.websearch import search as web_search, format_results as format_web, is_online as web_is_online  # type: ignore
     from gully.control import try_action as pc_try_action, list_actions as pc_list_actions  # type: ignore
@@ -257,20 +258,24 @@ def _pretty_model(mid: str, maxlen: int = 18) -> str:
     return base[:maxlen] if len(base) > maxlen else base
 
 
-def _model_name(eng, cfg) -> str:
-    mid = getattr(eng, "model_id", getattr(cfg, "model_id", "")) or ""
-    low = mid.lower()
+def _mux_model_name(mid: str) -> str:
+    """Return MUXE's user-facing name for a model path."""
+    low = (mid or "").replace("\\", "/").lower()
     if not mid or "dummy" in low:
         return "MUXE Base"
     if "tinyllama" in low:
         return "TinyLlama 1.1B"
-    # MUXE brand names for the models the installer ships
     for frag, name in (("qwen3-4b-instruct-2507", "MUXE 2.5 Pro"),
                        ("qwen2.5-coder-1.5b", "MUXE 1.5 Flash"),
                        ("qwen2.5-0.5b", "MUXE 1")):
         if frag in low:
             return name
-    return _pretty_model(mid, 18) or "MUXE Base"
+    return _pretty_model(mid, 22) or "MUXE Base"
+
+
+def _model_name(eng, cfg) -> str:
+    mid = getattr(eng, "model_id", getattr(cfg, "model_id", "")) or ""
+    return _mux_model_name(mid)
 
 
 def _recent(n: int = 3):
@@ -862,6 +867,7 @@ def _help(console):
         ("/clear", "clear screen"),
         ("/stats", "last generation stats"),
         ("/config", "model + settings"),
+        ("/model", "switch installed model"),
         ("/delete", "delete this chat"),
         ("/copy", "copy last code block (or /copy all)"),
         ("/ghost", "mascot dance"),
@@ -887,12 +893,113 @@ def _help(console):
 
 def _engine_label(eng, cfg) -> str:
     mid = getattr(eng, "model_id", getattr(cfg, "model_id", "")) or ""
-    low = mid.lower()
-    if not mid or "dummy" in low:
+    if not mid or "dummy" in mid.lower():
         return "dummy"
-    if "tinyllama" in low:
-        return "TinyLlama 1.1B"
-    return _pretty_model(mid, 22) or "model"
+    return _mux_model_name(mid) or "model"
+
+
+def _installed_model_paths() -> list:
+    """Return downloaded GGUFs in stable MUXE strength order."""
+    try:
+        paths = list(MODELS_DIR.glob("*.gguf")) + list(MODELS_DIR.glob("*.GGUF"))
+    except Exception:
+        return []
+    rank = ("qwen2.5-0.5b", "qwen2.5-coder-1.5b", "qwen3-4b-instruct-2507")
+    def key(path):
+        low = path.name.lower()
+        return (next((i for i, frag in enumerate(rank) if frag in low), len(rank)), low)
+    return sorted({p.resolve() for p in paths}, key=key)
+
+
+def _model_choice_path(path):
+    """Use the same portable path format as the installer."""
+    return f"gully/models/{path.name}"
+
+
+def _switch_model(console, cfg, eng, persona, config_path, requested: str = ""):
+    """Select an installed GGUF, persist it, and replace the loaded engine."""
+    paths = _installed_model_paths()
+    if not paths:
+        msg = "  no models installed — rerun the installer and choose a model"
+        if console is None: print(msg)
+        else: console.print(Text(msg, style="dim"))
+        return eng
+
+    current = str(getattr(eng, "model_path", "") or getattr(eng, "model_id", ""))
+    current_name = _mux_model_name(current)
+    if requested:
+        try:
+            index = int(requested) - 1
+        except ValueError:
+            index = next((i for i, p in enumerate(paths)
+                          if _mux_model_name(str(p)).lower() == requested.lower()), -1)
+    else:
+        index = -1
+        if console is None:
+            print("  Installed models:")
+        else:
+            console.print(Text("  Installed models:", style="bold #ff7f6b"))
+        for i, path in enumerate(paths, 1):
+            marker = "  (current)" if _mux_model_name(str(path)) == current_name else ""
+            line = f"    {i}) {_mux_model_name(str(path))}  ({path.stat().st_size / 1024**3:.2f} GB){marker}"
+            if console is None: print(line)
+            else: console.print(Text(line, style="white"))
+        try:
+            answer = input("  Pick a model (Enter to cancel): ").strip()
+        except (EOFError, KeyboardInterrupt):
+            answer = ""
+        if not answer:
+            return eng
+        try:
+            index = int(answer) - 1
+        except ValueError:
+            index = next((i for i, p in enumerate(paths)
+                          if _mux_model_name(str(p)).lower() == answer.lower()), -1)
+    if index < 0 or index >= len(paths):
+        msg = "  invalid model choice — nothing changed"
+        if console is None: print(msg)
+        else: console.print(Text(msg, style="dim"))
+        return eng
+
+    selected = paths[index]
+    current_path = pathlib.Path(current).resolve() if current else None
+    same_model = bool(current_path and (
+        selected == current_path or selected.name.lower() == current_path.name.lower()))
+    if same_model:
+        msg = f"  already using {_mux_model_name(str(selected))}"
+        if console is None: print(msg)
+        else: console.print(Text(msg, style="dim"))
+        return eng
+
+    cfg.model_id = _model_choice_path(selected)
+    cfg.model_file = _model_choice_path(selected)
+    try:
+        # Persist first: a disk failure must leave the currently loaded engine usable.
+        save_config(cfg, config_path)
+    except Exception as exc:
+        msg = f"  could not save model choice: {exc}"
+        if console is None: print(msg)
+        else: console.print(Text(msg, style="dim"))
+        return eng
+    try:
+        thread = getattr(eng, "_warmup_thread", None)
+        if thread is not None and getattr(thread, "is_alive", lambda: False)():
+            thread.join(timeout=2)
+        eng.unload()
+    except Exception:
+        pass
+    import gc
+    gc.collect()
+    new_eng, warns = create_engine(cfg, persona)
+    try: new_eng.warmup_async()
+    except Exception: pass
+    msg = f"  switched to {_mux_model_name(str(selected))} — loading now"
+    if console is None: print(msg)
+    else: console.print(Text(msg, style="#ff7f6b"))
+    for warning in warns[-2:]:
+        if console is None: print(f"  {warning}")
+        else: console.print(Text(f"  {warning}", style="dim"))
+    return new_eng
 
 
 # ---------- auto web-search trigger (no /web needed) ----------
@@ -1397,7 +1504,12 @@ def run_muxe(config_path=None, conversation_id=None, once=None):
                     t.add_row(Text(str(k), style="#ff7f6b"), Text(str(v), style="white"))
                 console.print(Panel(t, box=ROUNDED, border_style="dim"))
             continue
-        if low in ("/config", "/model", "/info"):
+        if low == "/model" or low.startswith("/model "):
+            requested = user.split(maxsplit=1)[1].strip() if len(user.split(maxsplit=1)) > 1 else ""
+            eng = _switch_model(console, cfg, eng, persona, config_path, requested)
+            _banner(console, cfg, eng)
+            continue
+        if low in ("/config", "/info"):
             info = {
                 "app": name,
                 "engine": getattr(eng, "name", cfg.engine),

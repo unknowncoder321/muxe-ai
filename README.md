@@ -101,6 +101,7 @@ Inside MUXE:
 | `/online` `/offline` | toggle web search on and off |
 | `/web <query>` | search the web and answer from the results |
 | `/stats` `/config` | settings and last-run info |
+| `/model` | switch between installed MUXE models without reinstalling |
 | `/quit` | save and exit |
 
 **It can create files and folders** — just like Claude Code. Ask it to build
